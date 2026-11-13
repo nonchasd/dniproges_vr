@@ -3,9 +3,17 @@ import { VRButton } from 'three/addons/webxr/VRButton.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
 
-// Dynamic remote model (supports CORS across localhost and GitHub Pages)
-const MODEL_URL =
+// In local dev/testing, read directly from the local assets folder.
+// In production builds (GitHub Pages), fetch dynamically from GitHub raw without bundling the 55MB GLB.
+const IS_DEV = process.env.NODE_ENV === 'development' ||
+  window.location.hostname === 'localhost' ||
+  window.location.hostname === '127.0.0.1';
+
+const REMOTE_MODEL_URL =
   'https://raw.githubusercontent.com/nonchasd/dniproges_vr/main/assets/dniproges_map_fix.glb';
+const LOCAL_MODEL_URL = './dniproges_map_fix.glb';
+
+const MODEL_URL = IS_DEV ? LOCAL_MODEL_URL : REMOTE_MODEL_URL;
 
 async function init() {
   const scene = new THREE.Scene();
@@ -192,6 +200,7 @@ async function init() {
 
   // Model Loading
   const loadingStatusEl = document.getElementById('loading-status');
+  console.log(`[dniproges_vr] Loading model from: ${MODEL_URL} (IS_DEV=${IS_DEV})`);
   const loader = new GLTFLoader();
   loader.load(
     MODEL_URL,
@@ -199,7 +208,7 @@ async function init() {
       scene.add(gltf.scene);
 
       if (loadingStatusEl) {
-        loadingStatusEl.textContent = '✅ Model loaded successfully';
+        loadingStatusEl.textContent = `✅ Model loaded (${IS_DEV ? 'Local Debug' : 'Remote'})`;
         loadingStatusEl.style.color = '#00e676';
         setTimeout(() => {
           loadingStatusEl.style.display = 'none';
@@ -233,14 +242,14 @@ async function init() {
       if (xhr.total > 0) {
         const percent = Math.round((xhr.loaded / xhr.total) * 100);
         if (loadingStatusEl) {
-          loadingStatusEl.textContent = `⏳ Loading 3D model: ${percent}%`;
+          loadingStatusEl.textContent = `⏳ Loading 3D model (${IS_DEV ? 'Local' : 'Remote'}): ${percent}%`;
         }
       }
     },
     (error) => {
-      console.error('Failed to load GLTF model:', error);
+      console.error(`Failed to load GLTF model from ${MODEL_URL}:`, error);
       if (loadingStatusEl) {
-        loadingStatusEl.textContent = '❌ Failed to load 3D model';
+        loadingStatusEl.textContent = `❌ Failed to load 3D model (${IS_DEV ? 'Local' : 'Remote'})`;
         loadingStatusEl.style.color = '#ff4d4d';
       }
     }

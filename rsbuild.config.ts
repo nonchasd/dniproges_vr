@@ -18,5 +18,15 @@ export default defineConfig({
   },
   server: {
     host: '0.0.0.0',
+    publicDir: [
+      {
+        name: 'public',
+        copyOnBuild: true,
+      },
+      {
+        name: 'assets',
+        copyOnBuild: false,
+      },
+    ],
   },
 });
