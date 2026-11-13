@@ -5,11 +5,53 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>APP</title>
   <style>
-    body { margin: 0; overflow: hidden; }
+    body { margin: 0; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
     canvas { display: block; }
+    #hud {
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      color: #eaeaea;
+      background: rgba(18, 18, 18, 0.75);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 13px;
+      line-height: 1.6;
+      pointer-events: none;
+      user-select: none;
+      backdrop-filter: blur(6px);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+      z-index: 10;
+    }
+    #hud .title {
+      font-weight: 600;
+      color: #4da6ff;
+      margin-bottom: 2px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    #hud kbd {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 3px;
+      padding: 1px 5px;
+      font-size: 11px;
+      font-family: inherit;
+      color: #fff;
+    }
   </style>
 </head>
 <body>
+  <div id="hud">
+    <div class="title">🎮 FPS Camera (Non-VR)</div>
+    <div id="lock-status" style="color: #ffcc00; font-size: 11px; margin-bottom: 3px;">Click canvas to lock mouse &bull; Esc to release</div>
+    <div><strong>Mouse:</strong> Move to Look (Yaw / Pitch)</div>
+    <div><strong>Movement:</strong> <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Fly &bull; <kbd>Space</kbd> Up &bull; <kbd>C</kbd> Down</div>
+    <div><kbd>Shift</kbd> Speed Boost &bull; <strong>Scroll:</strong> Adjust Speed (<span id="speed-val">40</span>)</div>
+    <div id="loading-status" style="color: #4da6ff; font-weight: 500; margin-top: 5px; font-size: 12px;">⏳ Loading 3D model: 0%</div>
+  </div>
   <div id="root"></div>
 </body>
 </html>

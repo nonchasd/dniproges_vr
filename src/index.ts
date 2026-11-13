@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
 
+// Dynamic remote model (supports CORS across localhost and GitHub Pages)
 const MODEL_URL =
   'https://raw.githubusercontent.com/nonchasd/dniproges_vr/main/assets/dniproges_map_fix.glb';
 
@@ -11,7 +11,13 @@ async function init() {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x111111);
 
-  const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 50000);
+  const camera = new THREE.PerspectiveCamera(
+    70,
+    window.innerWidth / window.innerHeight,
+    0.1,
+    50000
+  );
+  camera.rotation.order = 'YXZ';
 
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
@@ -22,9 +28,81 @@ async function init() {
   document.body.appendChild(renderer.domElement);
   document.body.appendChild(VRButton.createButton(renderer));
 
-  // Controls for Non-VR
-  const controls = new OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = true;
+  // FPS Mouse Look State (Non-VR)
+  let isPointerLocked = false;
+  let isMouseDown = false;
+  let yaw = 0;
+  let pitch = 0;
+  const mouseSensitivity = 0.0022;
+
+  document.addEventListener('pointerlockchange', () => {
+    isPointerLocked = document.pointerLockElement === renderer.domElement;
+    const statusEl = document.getElementById('lock-status');
+    if (statusEl) {
+      statusEl.textContent = isPointerLocked
+        ? '🟢 Mouse Locked (Move mouse to look • Esc to release)'
+        : 'Click canvas to lock mouse • Esc to release';
+      statusEl.style.color = isPointerLocked ? '#00e676' : '#ffcc00';
+    }
+  });
+
+  renderer.domElement.addEventListener('click', () => {
+    if (!renderer.xr.isPresenting && !isPointerLocked) {
+      renderer.domElement.requestPointerLock();
+    }
+  });
+
+  renderer.domElement.addEventListener('mousedown', (e) => {
+    if (e.button === 0 || e.button === 2) {
+      isMouseDown = true;
+    }
+  });
+
+  window.addEventListener('mouseup', () => {
+    isMouseDown = false;
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (renderer.xr.isPresenting) return;
+    if (!isPointerLocked && !isMouseDown) return;
+
+    const movementX = e.movementX || 0;
+    const movementY = e.movementY || 0;
+
+    yaw -= movementX * mouseSensitivity;
+    pitch -= movementY * mouseSensitivity;
+
+    // Clamp pitch to avoid gimbal flip
+    const maxPitch = Math.PI / 2 - 0.02;
+    pitch = Math.max(-maxPitch, Math.min(maxPitch, pitch));
+
+    camera.rotation.set(pitch, yaw, 0);
+  });
+
+  // Dynamic Fly Speed adjustment with mouse wheel
+  let flyBaseSpeed = 40.0;
+  const speedValEl = document.getElementById('speed-val');
+
+  window.addEventListener('wheel', (e) => {
+    if (renderer.xr.isPresenting) return;
+    if (e.deltaY < 0) {
+      flyBaseSpeed = Math.min(flyBaseSpeed * 1.15, 300);
+    } else if (e.deltaY > 0) {
+      flyBaseSpeed = Math.max(flyBaseSpeed * 0.85, 5);
+    }
+    if (speedValEl) {
+      speedValEl.textContent = Math.round(flyBaseSpeed).toString();
+    }
+  });
+
+  // Keyboard state for flying
+  const keys: Record<string, boolean> = {};
+  window.addEventListener('keydown', (e) => {
+    keys[e.code] = true;
+  });
+  window.addEventListener('keyup', (e) => {
+    keys[e.code] = false;
+  });
 
   // Lights
   scene.add(new THREE.AmbientLight(0xffffff, 1.2));
@@ -47,8 +125,7 @@ async function init() {
   controllerGripRight.add(controllerModelFactory.createControllerModel(controllerGripRight));
   userGroup.add(controllerGripRight);
 
-  // VR Vignette (Physical approach for XR)
-  // We place a plane 0.1m in front of the camera.
+  // VR Vignette (Physical approach for XR comfort)
   const vignetteGeometry = new THREE.PlaneGeometry(1, 1);
   const vignetteMaterial = new THREE.ShaderMaterial({
     uniforms: { uOpacity: { value: 0.0 } },
@@ -64,7 +141,6 @@ async function init() {
       uniform float uOpacity;
       void main() {
         float dist = distance(vUv, vec2(0.5));
-        // Harder mask for better nausea reduction
         float mask = smoothstep(0.2, 0.6, dist);
         gl_FragColor = vec4(0.0, 0.0, 0.0, mask * uOpacity);
       }
@@ -72,26 +148,63 @@ async function init() {
     transparent: true,
     depthTest: false,
     depthWrite: false,
-    side: THREE.DoubleSide
+    side: THREE.DoubleSide,
   });
   const vignetteMesh = new THREE.Mesh(vignetteGeometry, vignetteMaterial);
-  vignetteMesh.position.z = -0.1; // 10cm in front of eyes
+  vignetteMesh.position.z = -0.1;
   vignetteMesh.frustumCulled = false;
   vignetteMesh.renderOrder = 9999;
   camera.add(vignetteMesh);
 
-  // Movement State
+  // VR Session Handlers
+  const hud = document.getElementById('hud');
+
+  renderer.xr.addEventListener('sessionstart', () => {
+    if (hud) hud.style.display = 'none';
+    if (document.pointerLockElement) document.exitPointerLock();
+
+    // Hand-off camera position & yaw to VR user rig
+    userGroup.position.copy(camera.position);
+    userGroup.rotation.y = yaw;
+    camera.position.set(0, 0, 0);
+    camera.quaternion.identity();
+  });
+
+  renderer.xr.addEventListener('sessionend', () => {
+    if (hud) hud.style.display = 'block';
+
+    // Hand-off VR rig position back to FPS camera
+    camera.position.copy(userGroup.position);
+    yaw = userGroup.rotation.y;
+    pitch = 0;
+    camera.rotation.set(pitch, yaw, 0);
+
+    userGroup.position.set(0, 0, 0);
+    userGroup.quaternion.identity();
+    vignetteMaterial.uniforms.uOpacity.value = 0.0;
+  });
+
+  // Speeds & State
   const clock = new THREE.Clock();
-  const moveDirection = new THREE.Vector3();
-  const glideSpeed = 8.0;
-  const rotationSpeed = 1.5;
+  const vrMoveDirection = new THREE.Vector3();
+  const vrGlideSpeed = 8.0;
+  const vrRotationSpeed = 1.5;
 
   // Model Loading
+  const loadingStatusEl = document.getElementById('loading-status');
   const loader = new GLTFLoader();
   loader.load(
     MODEL_URL,
     (gltf) => {
       scene.add(gltf.scene);
+
+      if (loadingStatusEl) {
+        loadingStatusEl.textContent = '✅ Model loaded successfully';
+        loadingStatusEl.style.color = '#00e676';
+        setTimeout(() => {
+          loadingStatusEl.style.display = 'none';
+        }, 3000);
+      }
 
       let modelCamera: THREE.Camera | null = null;
       gltf.scene.traverse((child) => {
@@ -104,29 +217,42 @@ async function init() {
         (modelCamera as THREE.Object3D).getWorldPosition(worldPos);
         (modelCamera as THREE.Object3D).getWorldQuaternion(worldQuat);
 
-        userGroup.position.copy(worldPos);
-        userGroup.quaternion.copy(worldQuat);
-
-        controls.target.addVectors(worldPos, new THREE.Vector3(0, 0, -1).applyQuaternion(worldQuat));
-        camera.position.set(0, 0, 0.1);
+        camera.position.copy(worldPos);
+        const euler = new THREE.Euler().setFromQuaternion(worldQuat, 'YXZ');
+        yaw = euler.y;
+        pitch = euler.x;
+        camera.rotation.set(pitch, yaw, 0);
+      } else {
+        camera.position.set(-200, 100, 200);
+        yaw = 0;
+        pitch = 0;
+        camera.rotation.set(0, 0, 0);
       }
     },
     (xhr) => {
       if (xhr.total > 0) {
         const percent = Math.round((xhr.loaded / xhr.total) * 100);
-        console.log(`Loading model: ${percent}%`);
+        if (loadingStatusEl) {
+          loadingStatusEl.textContent = `⏳ Loading 3D model: ${percent}%`;
+        }
       }
     },
     (error) => {
-      console.error('Failed to load GLTF model from GitHub:', error);
+      console.error('Failed to load GLTF model:', error);
+      if (loadingStatusEl) {
+        loadingStatusEl.textContent = '❌ Failed to load 3D model';
+        loadingStatusEl.style.color = '#ff4d4d';
+      }
     }
   );
 
+  // Main Render Loop
   renderer.setAnimationLoop(() => {
     const delta = clock.getDelta();
-    let isRotating = false;
 
     if (renderer.xr.isPresenting) {
+      // VR Mode Movement
+      let isRotating = false;
       const session = renderer.xr.getSession();
       if (session) {
         for (const source of session.inputSources) {
@@ -145,33 +271,61 @@ async function init() {
                 right.y = 0;
                 right.normalize();
 
-                moveDirection.set(0, 0, 0);
-                moveDirection.addScaledVector(forward, -stickY);
-                moveDirection.addScaledVector(right, stickX);
+                vrMoveDirection.set(0, 0, 0);
+                vrMoveDirection.addScaledVector(forward, -stickY);
+                vrMoveDirection.addScaledVector(right, stickX);
 
-                userGroup.position.addScaledVector(moveDirection, glideSpeed * delta);
+                userGroup.position.addScaledVector(vrMoveDirection, vrGlideSpeed * delta);
               }
             }
 
             if (source.handedness === 'right') {
               if (Math.abs(stickX) > 0.1) {
-                userGroup.rotation.y -= stickX * rotationSpeed * delta;
+                userGroup.rotation.y -= stickX * vrRotationSpeed * delta;
                 isRotating = true;
               }
             }
           }
         }
       }
+
+      const targetOpacity = isRotating ? 1.0 : 0.0;
+      vignetteMaterial.uniforms.uOpacity.value = THREE.MathUtils.lerp(
+        vignetteMaterial.uniforms.uOpacity.value,
+        targetOpacity,
+        delta * 5
+      );
+    } else {
+      // Non-VR FPS Flying Camera
+      vignetteMaterial.uniforms.uOpacity.value = 0.0;
+
+      const forward = new THREE.Vector3();
+      camera.getWorldDirection(forward);
+
+      const right = new THREE.Vector3();
+      right.crossVectors(forward, camera.up).normalize();
+
+      const up = new THREE.Vector3(0, 1, 0);
+      const moveDelta = new THREE.Vector3();
+
+      let currentSpeed = flyBaseSpeed;
+      if (keys['ShiftLeft'] || keys['ShiftRight']) {
+        currentSpeed *= 3.5;
+      }
+
+      if (keys['KeyW'] || keys['ArrowUp']) moveDelta.add(forward);
+      if (keys['KeyS'] || keys['ArrowDown']) moveDelta.sub(forward);
+      if (keys['KeyD'] || keys['ArrowRight']) moveDelta.add(right);
+      if (keys['KeyA'] || keys['ArrowLeft']) moveDelta.sub(right);
+      if (keys['Space'] || keys['KeyE'] || keys['PageUp']) moveDelta.add(up);
+      if (keys['KeyC'] || keys['KeyQ'] || keys['PageDown']) moveDelta.sub(up);
+
+      if (moveDelta.lengthSq() > 0) {
+        moveDelta.normalize().multiplyScalar(currentSpeed * delta);
+        camera.position.add(moveDelta);
+      }
     }
 
-    const targetOpacity = isRotating ? 1.0 : 0.0;
-    vignetteMaterial.uniforms.uOpacity.value = THREE.MathUtils.lerp(
-      vignetteMaterial.uniforms.uOpacity.value,
-      targetOpacity,
-      delta * 5
-    );
-
-    controls.update();
     renderer.render(scene, camera);
   });
 
