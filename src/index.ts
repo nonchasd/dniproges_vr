@@ -3,7 +3,9 @@ import { VRButton } from 'three/addons/webxr/VRButton.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
-import modelUrl from '../assets/dniproges_map_fix.glb';
+
+const MODEL_URL =
+  'https://raw.githubusercontent.com/nonchasd/dniproges_vr/main/assets/dniproges_map_fix.glb';
 
 async function init() {
   const scene = new THREE.Scene();
@@ -86,27 +88,39 @@ async function init() {
 
   // Model Loading
   const loader = new GLTFLoader();
-  loader.load(modelUrl, (gltf) => {
-    scene.add(gltf.scene);
+  loader.load(
+    MODEL_URL,
+    (gltf) => {
+      scene.add(gltf.scene);
 
-    let modelCamera: THREE.Camera | null = null;
-    gltf.scene.traverse((child) => {
-      if (child instanceof THREE.Camera) modelCamera = child;
-    });
+      let modelCamera: THREE.Camera | null = null;
+      gltf.scene.traverse((child) => {
+        if (child instanceof THREE.Camera) modelCamera = child;
+      });
 
-    if (modelCamera) {
-      const worldPos = new THREE.Vector3();
-      const worldQuat = new THREE.Quaternion();
-      (modelCamera as THREE.Object3D).getWorldPosition(worldPos);
-      (modelCamera as THREE.Object3D).getWorldQuaternion(worldQuat);
+      if (modelCamera) {
+        const worldPos = new THREE.Vector3();
+        const worldQuat = new THREE.Quaternion();
+        (modelCamera as THREE.Object3D).getWorldPosition(worldPos);
+        (modelCamera as THREE.Object3D).getWorldQuaternion(worldQuat);
 
-      userGroup.position.copy(worldPos);
-      userGroup.quaternion.copy(worldQuat);
+        userGroup.position.copy(worldPos);
+        userGroup.quaternion.copy(worldQuat);
 
-      controls.target.addVectors(worldPos, new THREE.Vector3(0, 0, -1).applyQuaternion(worldQuat));
-      camera.position.set(0, 0, 0.1);
+        controls.target.addVectors(worldPos, new THREE.Vector3(0, 0, -1).applyQuaternion(worldQuat));
+        camera.position.set(0, 0, 0.1);
+      }
+    },
+    (xhr) => {
+      if (xhr.total > 0) {
+        const percent = Math.round((xhr.loaded / xhr.total) * 100);
+        console.log(`Loading model: ${percent}%`);
+      }
+    },
+    (error) => {
+      console.error('Failed to load GLTF model from GitHub:', error);
     }
-  });
+  );
 
   renderer.setAnimationLoop(() => {
     const delta = clock.getDelta();
