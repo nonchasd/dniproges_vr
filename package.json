@@ -1,0 +1,20 @@
+{
+  "name": "vpo_app",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "rsbuild dev",
+    "build": "rsbuild build",
+    "preview": "rsbuild preview"
+  },
+  "devDependencies": {
+    "@rsbuild/core": "^1.6.15",
+    "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "@types/three": "^0.182.0",
+    "three": "^0.184.0",
+    "ts-proto": "^2.11.6"
+  }
+}
